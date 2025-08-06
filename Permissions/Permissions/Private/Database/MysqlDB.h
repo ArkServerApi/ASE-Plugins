@@ -219,12 +219,13 @@ public:
 		if (!IsGroupExists(group))
 			return  "Group does not exist";
 
-		if (Permissions::IsPlayerInGroup(steam_id, group))
+		// Pelayori 29-07-2025: Permissions::IsPlayerInGroup returns also timed permissions so we can't use it to determine if the player is permanently in the group.
+		TArray<FString> groups = GetPlayerGroups(steam_id, false);
+		if (groups.Contains(group))
 			return "Player was already added";
 
 		try
 		{
-			auto groups = GetPlayerGroups(steam_id, false);
 			groups.AddUnique(group);
 
 			FString query_groups("");
@@ -451,16 +452,13 @@ public:
 			groups = permissionPlayers[steam_id].TimedGroups;
 			playersMutex.unlock();
 		}
-		for (int32 Index = groups.Num() - 1; Index >= 0; --Index)
-		{
-			const TimedGroup& current_group = groups[Index];
-			if (current_group.GroupName.Equals(group)) {
-				groups.RemoveAt(Index);
-				continue;
-			}
-		}
-		if (Permissions::IsPlayerInGroup(steam_id, group))
-			return "Player is already permanetly in this group.";
+
+		// Pelayori 29-07-2025: Existing timed permissions timer extension
+
+		// Permissions::IsPlayerInGroup returns also timed permissions so we can't use it to determine if the player is permanently in the group.
+		TArray<FString> permanentPlayerGroups = GetPlayerGroups(steam_id, false);
+		if (permanentPlayerGroups.Contains(group))
+			return "Player is already permanently in this group.";
 
 		long long ExpireAtSecs = 0;
 		long long delayUntilSecs = 0;
@@ -469,7 +467,29 @@ public:
 		}
 		ExpireAtSecs = std::chrono::duration_cast<std::chrono::seconds>((std::chrono::system_clock::now() + std::chrono::seconds(secs)).time_since_epoch()).count();
 
-		groups.Add(TimedGroup{ group, delayUntilSecs, ExpireAtSecs });
+		// If it exists in the timed already, extend the timer, else add it as new
+		// TimedGroup has had operator== defined, so we can use Contains
+		if (groups.Contains(group))
+		{
+			TimedGroup* current_group = groups.FindByKey(group);
+			if (!current_group)
+				groups.Add(TimedGroup{ group, delayUntilSecs, ExpireAtSecs });
+			else
+			{
+				if (current_group->ExpireAtTime < std::time(nullptr))
+				{
+					current_group->ExpireAtTime = ExpireAtSecs;
+					current_group->DelayUntilTime = delayUntilSecs;
+				}
+				else
+					current_group->ExpireAtTime += secs;
+			}
+		}
+		else
+		{
+			groups.Add(TimedGroup{ group, delayUntilSecs, ExpireAtSecs });
+		}
+
 		FString new_groups;
 		for (const TimedGroup& current_group : groups)
 		{
@@ -618,12 +638,13 @@ public:
 		if (!IsGroupExists(group))
 			return  "Group does not exist";
 
-		if (Permissions::IsTribeInGroup(tribeId, group))
+		// Pelayori 29-07-2025: Permissions::IsPlayerInGroup returns also timed permissions so we can't use it to determine if the player is permanently in the group.
+		TArray<FString> groups = GetTribeGroups(tribeId, false);
+		if (groups.Contains(group))
 			return "Tribe was already added";
 
 		try
 		{
-			auto groups = GetTribeGroups(tribeId, false);
 			groups.AddUnique(group);
 
 			FString query_groups("");
@@ -709,15 +730,12 @@ public:
 			groups = permissionTribes[tribeId].TimedGroups;
 			tribesMutex.unlock();
 		}
-		for (int32 Index = groups.Num() - 1; Index >= 0; --Index)
-		{
-			const TimedGroup& current_group = groups[Index];
-			if (current_group.GroupName.Equals(group)) {
-				groups.RemoveAt(Index);
-				continue;
-			}
-		}
-		if (Permissions::IsTribeInGroup(tribeId, group))
+
+		// Pelayori 29-07-2025: Existing timed permissions timer extension
+
+		// Permissions::IsPlayerInGroup returns also timed permissions so we can't use it to determine if the player is permanently in the group.
+		TArray<FString> permanentPlayerGroups = GetTribeGroups(tribeId, false);
+		if (permanentPlayerGroups.Contains(group))
 			return "Tribe is already permanetly in this group.";
 
 		long long ExpireAtSecs = 0;
@@ -727,7 +745,29 @@ public:
 		}
 		ExpireAtSecs = std::chrono::duration_cast<std::chrono::seconds>((std::chrono::system_clock::now() + std::chrono::seconds(secs)).time_since_epoch()).count();
 
-		groups.Add(TimedGroup{ group, delayUntilSecs, ExpireAtSecs });
+		// If it exists in the timed already, extend the timer, else add it as new
+		// TimedGroup has had operator== defined, so we can use Contains
+		if (groups.Contains(group))
+		{
+			TimedGroup* current_group = groups.FindByKey(group);
+			if (!current_group)
+				groups.Add(TimedGroup{ group, delayUntilSecs, ExpireAtSecs });
+			else
+			{
+				if (current_group->ExpireAtTime < std::time(nullptr))
+				{
+					current_group->ExpireAtTime = ExpireAtSecs;
+					current_group->DelayUntilTime = delayUntilSecs;
+				}
+				else
+					current_group->ExpireAtTime += secs;
+			}
+		}
+		else
+		{
+			groups.Add(TimedGroup{ group, delayUntilSecs, ExpireAtSecs });
+		}
+
 		FString new_groups;
 		for (const TimedGroup& current_group : groups)
 		{

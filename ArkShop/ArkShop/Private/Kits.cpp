@@ -578,7 +578,7 @@ namespace ArkShop::Kits
 		}
 	}
 
-	bool ChangeKitAmountCbk(const FString& cmd)
+	bool ChangeKitAmountCbk(const FString& cmd, /*out param*/ uint64* parsedSteamId)
 	{
 		TArray<FString> parsed;
 		cmd.ParseIntoArray(parsed, L" ", true);
@@ -593,6 +593,9 @@ namespace ArkShop::Kits
 			try
 			{
 				steam_id = std::stoull(*parsed[1]);
+				if (parsedSteamId != nullptr)
+					*parsedSteamId = steam_id;
+
 				amount = std::stoi(*parsed[3]);
 			}
 			catch (const std::exception& exception)
@@ -603,7 +606,21 @@ namespace ArkShop::Kits
 
 			if (DBHelper::IsPlayerExists(steam_id))
 			{
-				return ChangeKitAmount(kit_name, amount, steam_id);
+				bool result = ChangeKitAmount(kit_name, amount, steam_id);
+				if (result)
+				{
+					auto playerKits = GetPlayerKitsConfig(steam_id);
+					int total_amount = playerKits.value(kit_name.ToString(), nlohmann::json::object()).value("Amount", 0);
+					FString receivedKitsText = GetText("ReceivedKits");
+					if (receivedKitsText.Equals("No message"))
+						receivedKitsText = "<RichColor Color=\"1, 1, 0, 1\">You received {0} kit(s): {1}! (Now you have: {2})</>";
+
+					AShooterPlayerController* player_controller = ArkApi::GetApiUtils().FindPlayerFromSteamId(steam_id);
+					ArkApi::GetApiUtils().SendChatMessage(player_controller, GetText("Sender"),
+						*receivedKitsText, amount, *kit_name, total_amount);
+				}
+
+				return result;
 			}
 		}
 
@@ -616,11 +633,17 @@ namespace ArkShop::Kits
 	{
 		const auto shooter_controller = static_cast<AShooterPlayerController*>(controller);
 
-		const bool result = ChangeKitAmountCbk(*cmd);
+		uint64 parsedSteamId;
+		const bool result = ChangeKitAmountCbk(*cmd, &parsedSteamId);
+
 		if (result)
 		{
-			ArkApi::GetApiUtils().SendServerMessage(shooter_controller, FColorList::Green,
-				"Successfully changed kit amount");
+			const uint64 executorSteamId = ArkApi::IApiUtils::GetSteamIdFromController(shooter_controller);
+			if (executorSteamId != parsedSteamId)
+			{
+				ArkApi::GetApiUtils().SendServerMessage(shooter_controller, FColorList::Green,
+					"Successfully changed kit amount");
+			}
 		}
 		else
 		{
@@ -658,7 +681,7 @@ namespace ArkShop::Kits
 	{
 		FString reply;
 
-		const bool result = ChangeKitAmountCbk(rcon_packet->Body);
+		const bool result = ChangeKitAmountCbk(rcon_packet->Body, nullptr);
 		if (result)
 		{
 			reply = "Successfully changed kit amount";
