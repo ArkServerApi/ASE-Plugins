@@ -329,3 +329,6 @@ ASALocalRun/
 
 # Local History for Visual Studio
 .localhistory/
+**/Release
+/Permissions/Permissions/x64/Ark
+/Permissions/x64/Ark
